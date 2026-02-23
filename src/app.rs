@@ -4,12 +4,13 @@ use iced::widget::{center, column, container, progress_bar, text};
 use iced::{Element, Length, Subscription, Task};
 
 use crate::api::client::ApiClient;
-use crate::api::types::{CloneRequest, ReferenceAudio, TaskStatus};
+use crate::api::types::{CloneRequest, ReferenceAudio, TaskStatus, VoiceDesignRequest};
 use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::audio::recorder::{Recorder, RecordingState};
 use crate::message::{ActiveTask, Message, TabId};
 use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
+use crate::views::design_tab::DesignTabState;
 use crate::views::upload_tab::UploadTabState;
 
 // ─── Screen state ───────────────────────────────────────────────
@@ -45,6 +46,9 @@ pub struct Qvox {
     // ─── Upload tab ───────────────────────────────────────
     upload_tab: UploadTabState,
 
+    // ─── Design tab ──────────────────────────────────────
+    design_tab: DesignTabState,
+
     // ─── Audio playback / recording ─────────────────────
     player: Option<AudioPlayer>,
     recorder: Option<Recorder>,
@@ -66,6 +70,7 @@ impl Default for Qvox {
             clone_tab: CloneTabState::new(),
             active_task: None,
             upload_tab: UploadTabState::new(),
+            design_tab: DesignTabState::new(),
             player: None,
             recorder: None,
         }
@@ -108,6 +113,12 @@ impl Qvox {
             | Message::CloneRefSelected(_)
             | Message::CloneLanguageSelected(_)
             | Message::CloneGenerate => self.update_clone(message),
+
+            // ─── Design tab inputs ────────────────────────────
+            Message::DesignTextChanged(_)
+            | Message::DesignInstructChanged(_)
+            | Message::DesignLanguageSelected(_)
+            | Message::DesignGenerate => self.update_design(message),
 
             // ─── Task lifecycle ─────────────────────────────
             Message::TaskCreated(_)
@@ -248,6 +259,25 @@ impl Qvox {
                 Task::none()
             }
             Message::CloneGenerate => self.start_clone_generation(),
+            _ => Task::none(),
+        }
+    }
+
+    fn update_design(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::DesignTextChanged(t) => {
+                self.design_tab.text = t;
+                Task::none()
+            }
+            Message::DesignInstructChanged(t) => {
+                self.design_tab.instruct = t;
+                Task::none()
+            }
+            Message::DesignLanguageSelected(lang) => {
+                self.design_tab.selected_language = lang;
+                Task::none()
+            }
+            Message::DesignGenerate => self.start_design_generation(),
             _ => Task::none(),
         }
     }
@@ -622,6 +652,27 @@ impl Qvox {
         )
     }
 
+    fn start_design_generation(&mut self) -> Task<Message> {
+        let request = VoiceDesignRequest {
+            text: self.design_tab.text.clone(),
+            instruct: self.design_tab.instruct.clone(),
+            language: self.design_tab.selected_language.clone(),
+        };
+
+        let base_url = self.api_base_url();
+
+        Task::perform(
+            async move {
+                ApiClient::new(&base_url)
+                    .voice_design(&request)
+                    .await
+                    .map(|resp| resp.task_id)
+                    .map_err(|e| e.to_string())
+            },
+            Message::TaskCreated,
+        )
+    }
+
     #[allow(clippy::unused_self)]
     fn start_transcription(&self, wav_bytes: Vec<u8>, hash: String) -> Task<Message> {
         Task::perform(
@@ -734,6 +785,12 @@ impl Qvox {
                 self.playback_state(),
                 self.recording_state(),
                 self.recorder.as_ref().map_or(0.0, Recorder::elapsed_secs),
+            ),
+            TabId::VoiceDesign => crate::views::design_tab::view(
+                &self.design_tab,
+                &self.languages,
+                self.active_task.as_ref(),
+                self.playback_state(),
             ),
             _ => center(text("Coming soon...").size(16)).into(),
         }

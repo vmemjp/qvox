@@ -40,6 +40,16 @@ pub enum Message {
     /// Generate button pressed.
     CloneGenerate,
 
+    // ─── Design tab inputs ─────────────────────────────────────
+    /// Text input changed on design tab.
+    DesignTextChanged(String),
+    /// Voice description (instruct) changed.
+    DesignInstructChanged(String),
+    /// Language selected on design tab.
+    DesignLanguageSelected(String),
+    /// Generate button pressed on design tab.
+    DesignGenerate,
+
     // ─── Task lifecycle ─────────────────────────────────────────
     /// Generation task created, received `task_id`.
     TaskCreated(Result<String, String>),
