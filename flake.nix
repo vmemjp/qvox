@@ -32,6 +32,7 @@
         nativeBuildInputs = with pkgs; [
           pkg-config
           cmake          # whisper.cpp (whisper-rs)
+          llvmPackages.libclang   # bindgen (whisper-rs-sys)
           rustToolchain
         ];
 
@@ -83,6 +84,7 @@
         devShells.default = pkgs.mkShell {
           inherit nativeBuildInputs buildInputs;
 
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
           OPENSSL_DIR = "${pkgs.openssl.dev}";
           OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
           CUDA_PATH = "${pkgs.cudaPackages.cudatoolkit}";
