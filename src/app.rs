@@ -5,7 +5,8 @@ use iced::{Element, Length, Subscription, Task};
 
 use crate::api::client::ApiClient;
 use crate::api::types::{
-    CloneRequest, CustomVoiceRequest, ReferenceAudio, TaskStatus, VoiceDesignRequest,
+    CloneRequest, CustomVoiceRequest, MultiSpeakerRequest, MultiSpeakerSegment, ReferenceAudio,
+    TaskStatus, VoiceDesignRequest,
 };
 use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::audio::recorder::{Recorder, RecordingState};
@@ -14,6 +15,7 @@ use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
 use crate::views::custom_tab::CustomTabState;
 use crate::views::design_tab::DesignTabState;
+use crate::views::multispeaker_tab::MultiSpeakerTabState;
 use crate::views::upload_tab::UploadTabState;
 
 // ─── Screen state ───────────────────────────────────────────────
@@ -56,6 +58,9 @@ pub struct Qvox {
     custom_tab: CustomTabState,
     speakers: Vec<String>,
 
+    // ─── Multi-Speaker tab ───────────────────────────────
+    multi_tab: MultiSpeakerTabState,
+
     // ─── Audio playback / recording ─────────────────────
     player: Option<AudioPlayer>,
     recorder: Option<Recorder>,
@@ -80,6 +85,7 @@ impl Default for Qvox {
             design_tab: DesignTabState::new(),
             custom_tab: CustomTabState::new(),
             speakers: Vec::new(),
+            multi_tab: MultiSpeakerTabState::new(),
             player: None,
             recorder: None,
         }
@@ -135,6 +141,14 @@ impl Qvox {
             | Message::CustomLanguageSelected(_)
             | Message::CustomInstructChanged(_)
             | Message::CustomGenerate => self.update_custom(message),
+
+            // ─── Multi-Speaker tab inputs ─────────────────────
+            Message::MultiAddSegment
+            | Message::MultiRemoveSegment(_)
+            | Message::MultiRefSelected(_, _)
+            | Message::MultiTextChanged(_, _)
+            | Message::MultiLanguageSelected(_, _)
+            | Message::MultiGenerate => self.update_multi(message),
 
             // ─── Task lifecycle ─────────────────────────────
             Message::TaskCreated(_)
@@ -318,6 +332,43 @@ impl Qvox {
                 Task::none()
             }
             Message::CustomGenerate => self.start_custom_generation(),
+            _ => Task::none(),
+        }
+    }
+
+    fn update_multi(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::MultiAddSegment => {
+                self.multi_tab
+                    .segments
+                    .push(crate::views::multispeaker_tab::SegmentState::default());
+                Task::none()
+            }
+            Message::MultiRemoveSegment(i) => {
+                if i < self.multi_tab.segments.len() && self.multi_tab.segments.len() > 1 {
+                    self.multi_tab.segments.remove(i);
+                }
+                Task::none()
+            }
+            Message::MultiRefSelected(i, name) => {
+                if let Some(seg) = self.multi_tab.segments.get_mut(i) {
+                    seg.selected_ref = Some(name);
+                }
+                Task::none()
+            }
+            Message::MultiTextChanged(i, t) => {
+                if let Some(seg) = self.multi_tab.segments.get_mut(i) {
+                    seg.text = t;
+                }
+                Task::none()
+            }
+            Message::MultiLanguageSelected(i, lang) => {
+                if let Some(seg) = self.multi_tab.segments.get_mut(i) {
+                    seg.selected_language = lang;
+                }
+                Task::none()
+            }
+            Message::MultiGenerate => self.start_multi_generation(),
             _ => Task::none(),
         }
     }
@@ -745,6 +796,44 @@ impl Qvox {
         )
     }
 
+    fn start_multi_generation(&mut self) -> Task<Message> {
+        let segments: Vec<MultiSpeakerSegment> = self
+            .multi_tab
+            .segments
+            .iter()
+            .filter_map(|seg| {
+                let ref_name = seg.selected_ref.as_ref()?;
+                let ref_audio = self.references.iter().find(|r| {
+                    r.name.as_deref().unwrap_or(&r.original_name) == ref_name.as_str()
+                })?;
+                Some(MultiSpeakerSegment {
+                    text: seg.text.clone(),
+                    ref_audio_id: ref_audio.id.clone(),
+                    ref_text: ref_audio.ref_text.clone(),
+                    language: seg.selected_language.clone(),
+                })
+            })
+            .collect();
+
+        if segments.len() != self.multi_tab.segments.len() {
+            return Task::none();
+        }
+
+        let request = MultiSpeakerRequest { segments };
+        let base_url = self.api_base_url();
+
+        Task::perform(
+            async move {
+                ApiClient::new(&base_url)
+                    .clone_multi_speaker(&request)
+                    .await
+                    .map(|resp| resp.task_id)
+                    .map_err(|e| e.to_string())
+            },
+            Message::TaskCreated,
+        )
+    }
+
     #[allow(clippy::unused_self)]
     fn start_transcription(&self, wav_bytes: Vec<u8>, hash: String) -> Task<Message> {
         Task::perform(
@@ -871,7 +960,13 @@ impl Qvox {
                 self.active_task.as_ref(),
                 self.playback_state(),
             ),
-            TabId::MultiSpeaker => center(text("Coming soon...").size(16)).into(),
+            TabId::MultiSpeaker => crate::views::multispeaker_tab::view(
+                &self.multi_tab,
+                &self.references,
+                &self.languages,
+                self.active_task.as_ref(),
+                self.playback_state(),
+            ),
         }
     }
     // LCOV_EXCL_STOP

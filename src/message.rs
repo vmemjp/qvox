@@ -62,6 +62,20 @@ pub enum Message {
     /// Generate button pressed on custom voice tab.
     CustomGenerate,
 
+    // ─── Multi-Speaker tab inputs ──────────────────────────────
+    /// Add a new segment.
+    MultiAddSegment,
+    /// Remove segment at index.
+    MultiRemoveSegment(usize),
+    /// Reference audio selected for segment at index.
+    MultiRefSelected(usize, String),
+    /// Text changed for segment at index.
+    MultiTextChanged(usize, String),
+    /// Language selected for segment at index.
+    MultiLanguageSelected(usize, String),
+    /// Generate button pressed on multi-speaker tab.
+    MultiGenerate,
+
     // ─── Task lifecycle ─────────────────────────────────────────
     /// Generation task created, received `task_id`.
     TaskCreated(Result<String, String>),
