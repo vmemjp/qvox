@@ -6,6 +6,7 @@ use iced::{Element, Length, Subscription, Task};
 use crate::api::client::ApiClient;
 use crate::api::types::{CloneRequest, ReferenceAudio, TaskStatus};
 use crate::audio::player::{AudioPlayer, PlaybackState};
+use crate::audio::recorder::{Recorder, RecordingState};
 use crate::message::{ActiveTask, Message, TabId};
 use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
@@ -44,8 +45,9 @@ pub struct Qvox {
     // ─── Upload tab ───────────────────────────────────────
     upload_tab: UploadTabState,
 
-    // ─── Audio playback ───────────────────────────────────
+    // ─── Audio playback / recording ─────────────────────
     player: Option<AudioPlayer>,
+    recorder: Option<Recorder>,
 }
 
 impl Default for Qvox {
@@ -65,6 +67,7 @@ impl Default for Qvox {
             active_task: None,
             upload_tab: UploadTabState::new(),
             player: None,
+            recorder: None,
         }
     }
 }
@@ -118,6 +121,9 @@ impl Qvox {
             | Message::UploadTextChanged(_)
             | Message::UploadLanguageSelected(_)
             | Message::UploadGenerate
+            | Message::RecordStart
+            | Message::RecordStop
+            | Message::RecordTick
             | Message::ModelDownloadProgress(_, _)
             | Message::ModelDownloaded(_)
             | Message::TranscriptionDone(_) => self.update_upload(message),
@@ -143,19 +149,21 @@ impl Qvox {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        match &self.screen {
-            Screen::Loading if self.error.is_none() => {
-                iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
-            }
-            Screen::Main
-                if self
-                    .active_task
-                    .as_ref()
-                    .is_some_and(|t| t.status == TaskStatus::Processing) =>
-            {
-                iced::time::every(Duration::from_secs(1)).map(|_| Message::TaskPollTick)
-            }
-            _ => Subscription::none(),
+        let is_loading = matches!(&self.screen, Screen::Loading) && self.error.is_none();
+        let is_task_polling = self
+            .active_task
+            .as_ref()
+            .is_some_and(|t| t.status == TaskStatus::Processing);
+        let is_recording = self.recording_state() == RecordingState::Recording;
+
+        if is_loading {
+            iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
+        } else if is_task_polling {
+            iced::time::every(Duration::from_secs(1)).map(|_| Message::TaskPollTick)
+        } else if is_recording {
+            iced::time::every(Duration::from_millis(200)).map(|_| Message::RecordTick)
+        } else {
+            Subscription::none()
         }
     }
 
@@ -312,6 +320,39 @@ impl Qvox {
                 Task::none()
             }
             Message::UploadGenerate => self.start_upload_generation(),
+            Message::RecordStart => {
+                self.ensure_recorder();
+                if let Some(rec) = &mut self.recorder
+                    && let Err(e) = rec.start()
+                {
+                    self.error = Some(format!("Recording error: {e}"));
+                }
+                Task::none()
+            }
+            Message::RecordStop => {
+                if let Some(rec) = &mut self.recorder {
+                    let samples = rec.stop();
+                    let sample_rate = rec.sample_rate();
+                    if !samples.is_empty() {
+                        match crate::audio::recorder::samples_to_wav(&samples, sample_rate) {
+                            Ok(wav_bytes) => {
+                                let name = "recording.wav".to_owned();
+                                return Task::done(Message::UploadFileSelected(
+                                    std::path::PathBuf::from(&name),
+                                    wav_bytes,
+                                    name,
+                                ));
+                            }
+                            Err(e) => self.error = Some(format!("WAV encode error: {e}")),
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::RecordTick => {
+                // Just triggers a view refresh via subscription
+                Task::none()
+            }
             _ => Task::none(),
         }
     }
@@ -416,6 +457,21 @@ impl Qvox {
     }
 
     // ─── Private helpers ────────────────────────────────────────
+
+    fn ensure_recorder(&mut self) {
+        if self.recorder.is_none() {
+            match Recorder::new() {
+                Ok(r) => self.recorder = Some(r),
+                Err(e) => self.error = Some(format!("Microphone error: {e}")),
+            }
+        }
+    }
+
+    fn recording_state(&self) -> RecordingState {
+        self.recorder
+            .as_ref()
+            .map_or(RecordingState::Idle, Recorder::state)
+    }
 
     fn ensure_player(&mut self) -> Option<&mut AudioPlayer> {
         if self.player.is_none() {
@@ -676,6 +732,8 @@ impl Qvox {
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
+                self.recording_state(),
+                self.recorder.as_ref().map_or(0.0, Recorder::elapsed_secs),
             ),
             _ => center(text("Coming soon...").size(16)).into(),
         }

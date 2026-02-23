@@ -76,6 +76,14 @@ pub enum Message {
     /// Generate button pressed on upload tab.
     UploadGenerate,
 
+    // ─── Recording ────────────────────────────────────────────────
+    /// Start microphone recording.
+    RecordStart,
+    /// Stop recording; produces WAV bytes.
+    RecordStop,
+    /// Recording tick (update elapsed time display).
+    RecordTick,
+
     // ─── Transcription ────────────────────────────────────────────
     /// Whisper model download progress (downloaded, total).
     ModelDownloadProgress(u64, u64),

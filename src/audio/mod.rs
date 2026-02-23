@@ -1,5 +1,4 @@
 pub mod player;
-#[allow(dead_code)]
 pub mod recorder;
 #[allow(dead_code)]
 pub mod processing;

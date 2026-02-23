@@ -5,6 +5,7 @@ use iced::{Element, Length};
 
 use crate::api::types::TaskStatus;
 use crate::audio::player::PlaybackState;
+use crate::audio::recorder::RecordingState;
 use crate::message::{ActiveTask, Message};
 
 /// State specific to the Upload & Clone tab.
@@ -43,6 +44,8 @@ pub fn view<'a>(
     languages: &'a [String],
     active_task: Option<&'a ActiveTask>,
     playback: PlaybackState,
+    recording: RecordingState,
+    recording_elapsed: f32,
 ) -> Element<'a, Message> {
     let file_label = state
         .file_name
@@ -50,6 +53,12 @@ pub fn view<'a>(
         .unwrap_or("No file selected");
 
     let choose_btn = button(text("Choose File")).on_press(Message::UploadPickFile);
+
+    // Record button
+    let record_btn = match recording {
+        RecordingState::Idle => button(text("Record")).on_press(Message::RecordStart),
+        RecordingState::Recording => button(text("Stop Recording")).on_press(Message::RecordStop),
+    };
 
     let lang_picker = pick_list(
         languages.to_vec(),
@@ -65,27 +74,37 @@ pub fn view<'a>(
     let can_generate = !state.text.is_empty()
         && state.file_bytes.is_some()
         && active_task.is_none()
-        && !state.transcribing;
+        && !state.transcribing
+        && recording == RecordingState::Idle;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {
         generate_btn = generate_btn.on_press(Message::UploadGenerate);
     }
 
-    let mut file_info = row![choose_btn, text(file_label).size(14)].spacing(8);
+    let mut file_row = row![choose_btn, record_btn, text(file_label).size(14)].spacing(8);
 
     if let Some(hash) = &state.file_hash {
-        file_info = file_info.push(text(format!("SHA256: {}...", &hash[..8])).size(10));
+        file_row = file_row.push(text(format!("SHA256: {}...", &hash[..8])).size(10));
     }
 
     let mut content = column![
         text("Upload & Clone").size(24),
         text("Audio File").size(14),
-        file_info,
+        file_row,
     ]
     .spacing(8)
     .padding(20)
     .width(Length::Fill);
+
+    // Recording elapsed time
+    if recording == RecordingState::Recording {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let secs = recording_elapsed as u64;
+        content = content.push(
+            text(format!("Recording... {:02}:{:02}", secs / 60, secs % 60)).size(12),
+        );
+    }
 
     // Transcription status
     if state.transcribing {
