@@ -16,6 +16,8 @@ pub struct UploadTabState {
     pub file_hash: Option<String>,
     pub text: String,
     pub selected_language: String,
+    pub ref_text: Option<String>,
+    pub transcribing: bool,
 }
 
 impl UploadTabState {
@@ -27,6 +29,8 @@ impl UploadTabState {
             file_hash: None,
             text: String::new(),
             selected_language: "auto".to_owned(),
+            ref_text: None,
+            transcribing: false,
         }
     }
 }
@@ -58,8 +62,10 @@ pub fn view<'a>(
         .on_input(Message::UploadTextChanged)
         .width(Length::Fill);
 
-    let can_generate =
-        !state.text.is_empty() && state.file_bytes.is_some() && active_task.is_none();
+    let can_generate = !state.text.is_empty()
+        && state.file_bytes.is_some()
+        && active_task.is_none()
+        && !state.transcribing;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {
@@ -76,15 +82,26 @@ pub fn view<'a>(
         text("Upload & Clone").size(24),
         text("Audio File").size(14),
         file_info,
-        text("Language").size(14),
-        lang_picker,
-        text("Text").size(14),
-        text_field,
-        row![generate_btn].spacing(8),
     ]
     .spacing(8)
     .padding(20)
     .width(Length::Fill);
+
+    // Transcription status
+    if state.transcribing {
+        content = content.push(text("Transcribing audio...").size(12));
+    } else if let Some(ref_text) = &state.ref_text {
+        content = content.push(
+            text(format!("Transcription: {}", truncate_text(ref_text, 80))).size(12),
+        );
+    }
+
+    content = content
+        .push(text("Language").size(14))
+        .push(lang_picker)
+        .push(text("Text").size(14))
+        .push(text_field)
+        .push(row![generate_btn].spacing(8));
 
     // Progress section
     if let Some(task) = active_task {
@@ -116,6 +133,16 @@ pub fn view<'a>(
     }
 
     content.into()
+}
+
+/// Truncate text for display, adding ellipsis if needed.
+fn truncate_text(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_owned()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{truncated}...")
+    }
 }
 
 // LCOV_EXCL_STOP

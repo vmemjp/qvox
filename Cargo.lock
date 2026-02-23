@@ -3581,6 +3581,7 @@ dependencies = [
  "anyhow",
  "cpal 0.15.3",
  "dirs",
+ "futures-util",
  "hound",
  "iced",
  "mockall",

@@ -117,7 +117,10 @@ impl Qvox {
             | Message::UploadFileSelected(_, _, _)
             | Message::UploadTextChanged(_)
             | Message::UploadLanguageSelected(_)
-            | Message::UploadGenerate => self.update_upload(message),
+            | Message::UploadGenerate
+            | Message::ModelDownloadProgress(_, _)
+            | Message::ModelDownloaded(_)
+            | Message::TranscriptionDone(_) => self.update_upload(message),
 
             // ─── Playback ─────────────────────────────────
             Message::PlayGenerated
@@ -268,10 +271,36 @@ impl Qvox {
             ),
             Message::UploadFileSelected(path, bytes, name) => {
                 let hash = crate::audio::hash::bytes_sha256(&bytes);
+
+                // Check transcription cache
+                let cached = crate::transcribe::whisper::cached_transcription(&hash);
+
                 self.upload_tab.selected_file = Some(path);
-                self.upload_tab.file_bytes = Some(bytes);
+                self.upload_tab.file_bytes = Some(bytes.clone());
                 self.upload_tab.file_name = Some(name);
-                self.upload_tab.file_hash = Some(hash);
+                self.upload_tab.file_hash = Some(hash.clone());
+
+                if let Some(text) = cached {
+                    self.upload_tab.ref_text = Some(text);
+                    Task::none()
+                } else {
+                    // Start transcription in background
+                    self.upload_tab.transcribing = true;
+                    self.upload_tab.ref_text = None;
+                    self.start_transcription(bytes, hash)
+                }
+            }
+            Message::TranscriptionDone(result) => {
+                self.upload_tab.transcribing = false;
+                match result {
+                    Ok(text) => self.upload_tab.ref_text = Some(text),
+                    Err(e) => self.error = Some(format!("Transcription failed: {e}")),
+                }
+                Task::none()
+            }
+            Message::ModelDownloadProgress(_, _) | Message::ModelDownloaded(_) => {
+                // Model download progress is handled silently for now;
+                // the transcription task chains download → transcribe.
                 Task::none()
             }
             Message::UploadTextChanged(t) => {
@@ -516,17 +545,52 @@ impl Qvox {
 
         let text = self.upload_tab.text.clone();
         let language = self.upload_tab.selected_language.clone();
+        let ref_text = self.upload_tab.ref_text.clone();
         let base_url = self.api_base_url();
 
         Task::perform(
             async move {
                 ApiClient::new(&base_url)
-                    .clone_with_upload(file_bytes, file_name, &text, None, Some(&language))
+                    .clone_with_upload(
+                        file_bytes,
+                        file_name,
+                        &text,
+                        ref_text.as_deref(),
+                        Some(&language),
+                    )
                     .await
                     .map(|resp| resp.task_id)
                     .map_err(|e| e.to_string())
             },
             Message::TaskCreated,
+        )
+    }
+
+    #[allow(clippy::unused_self)]
+    fn start_transcription(&self, wav_bytes: Vec<u8>, hash: String) -> Task<Message> {
+        Task::perform(
+            async move {
+                // Ensure model is downloaded
+                if !crate::transcribe::whisper::model_exists() {
+                    crate::transcribe::whisper::download_model(|_, _| {})
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+
+                // Run transcription in a blocking thread
+                tokio::task::spawn_blocking(move || {
+                    let result = crate::transcribe::whisper::transcribe(&wav_bytes)
+                        .map_err(|e| e.to_string())?;
+
+                    // Cache the result
+                    let _ = crate::transcribe::whisper::save_transcription_cache(&hash, &result);
+
+                    Ok(result)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            },
+            Message::TranscriptionDone,
         )
     }
 

@@ -76,6 +76,14 @@ pub enum Message {
     /// Generate button pressed on upload tab.
     UploadGenerate,
 
+    // ─── Transcription ────────────────────────────────────────────
+    /// Whisper model download progress (downloaded, total).
+    ModelDownloadProgress(u64, u64),
+    /// Model download finished.
+    ModelDownloaded(Result<std::path::PathBuf, String>),
+    /// Transcription result for uploaded audio.
+    TranscriptionDone(Result<String, String>),
+
     // ─── Generated list ─────────────────────────────────────────
     /// Generated audio list fetched.
     GeneratedListLoaded(Result<Vec<GeneratedAudio>, String>),
