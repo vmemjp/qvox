@@ -4,6 +4,7 @@
 mod api;
 mod app;
 mod audio;
+mod config;
 mod message;
 mod server;
 mod transcribe;
@@ -15,6 +16,7 @@ fn main() -> anyhow::Result<()> {
     iced::application(Qvox::new, Qvox::update, Qvox::view)
         .title(Qvox::title)
         .subscription(Qvox::subscription)
+        .theme(Qvox::theme)
         .run()?;
     Ok(())
 }

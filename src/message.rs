@@ -141,17 +141,35 @@ pub enum Message {
     GeneratedDelete(String),
     /// Deletion result.
     GeneratedDeleted(Result<String, String>),
+
+    // ─── Settings ─────────────────────────────────────────────────
+    /// Models field changed.
+    SettingsModelsChanged(String),
+    /// Device field changed.
+    SettingsDeviceChanged(String),
+    /// Port field changed.
+    SettingsPortChanged(String),
+    /// Script path field changed.
+    SettingsScriptPathChanged(String),
+    /// Dark mode toggled.
+    SettingsDarkModeToggled(bool),
+    /// Save settings and restart server.
+    SettingsSave,
+
+    // ─── Error ────────────────────────────────────────────────────
+    /// Dismiss the error banner.
+    ErrorDismiss,
 }
 
 /// Tab identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum TabId {
     Clone,
     Upload,
     MultiSpeaker,
     VoiceDesign,
     CustomVoice,
+    Settings,
 }
 
 /// State of an active generation task.

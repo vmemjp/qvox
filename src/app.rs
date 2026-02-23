@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use iced::widget::{center, column, container, progress_bar, scrollable, text};
-use iced::{Element, Length, Subscription, Task};
+use iced::widget::{button, center, column, container, progress_bar, row, scrollable, text};
+use iced::{Element, Length, Subscription, Task, Theme};
 
 use crate::api::client::ApiClient;
 use crate::api::types::{
@@ -10,8 +10,9 @@ use crate::api::types::{
 };
 use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::audio::recorder::{Recorder, RecordingState};
+use crate::config::AppConfig;
 use crate::message::{ActiveTask, Message, TabId};
-use crate::server::manager::{ServerConfig, ServerManager};
+use crate::server::manager::ServerManager;
 use crate::views::clone_tab::CloneTabState;
 use crate::views::custom_tab::CustomTabState;
 use crate::views::design_tab::DesignTabState;
@@ -33,7 +34,9 @@ enum Screen {
 pub struct Qvox {
     screen: Screen,
     server: Option<ServerManager>,
-    config: ServerConfig,
+    app_config: AppConfig,
+    edit_config: AppConfig,
+    settings_dirty: bool,
     elapsed_secs: u64,
     loading_status: String,
     error: Option<String>,
@@ -71,10 +74,13 @@ pub struct Qvox {
 
 impl Default for Qvox {
     fn default() -> Self {
+        let config = crate::config::load();
         Self {
             screen: Screen::Loading,
             server: None,
-            config: ServerConfig::default(),
+            edit_config: config.clone(),
+            app_config: config,
+            settings_dirty: false,
             elapsed_secs: 0,
             loading_status: "Starting server...".to_owned(),
             error: None,
@@ -105,6 +111,14 @@ impl Qvox {
     #[allow(clippy::unused_self)]
     pub fn title(&self) -> String {
         String::from("qvox")
+    }
+
+    pub fn theme(&self) -> Theme {
+        if self.app_config.ui.dark_mode {
+            Theme::Dark
+        } else {
+            Theme::Light
+        }
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -188,6 +202,20 @@ impl Qvox {
             | Message::GeneratedAudioFetched(_)
             | Message::GeneratedDelete(_)
             | Message::GeneratedDeleted(_) => self.update_generated(message),
+
+            // ─── Settings ──────────────────────────────────────
+            Message::SettingsModelsChanged(_)
+            | Message::SettingsDeviceChanged(_)
+            | Message::SettingsPortChanged(_)
+            | Message::SettingsScriptPathChanged(_)
+            | Message::SettingsDarkModeToggled(_)
+            | Message::SettingsSave => self.update_settings(message),
+
+            // ─── Error ─────────────────────────────────────────
+            Message::ErrorDismiss => {
+                self.error = None;
+                Task::none()
+            }
         }
     }
 
@@ -221,7 +249,7 @@ impl Qvox {
 
     fn update_server(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ServerSpawned => match ServerManager::spawn(&self.config) {
+            Message::ServerSpawned => match ServerManager::spawn(&self.app_config.to_server_config()) {
                 Ok(mgr) => {
                     self.server = Some(mgr);
                     "Waiting for server...".clone_into(&mut self.loading_status);
@@ -647,6 +675,58 @@ impl Qvox {
         }
     }
 
+    fn update_settings(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::SettingsModelsChanged(s) => {
+                self.edit_config.server.models =
+                    s.split(',').map(|m| m.trim().to_owned()).filter(|m| !m.is_empty()).collect();
+                self.settings_dirty = self.edit_config != self.app_config;
+                Task::none()
+            }
+            Message::SettingsDeviceChanged(s) => {
+                self.edit_config.server.device = s;
+                self.settings_dirty = self.edit_config != self.app_config;
+                Task::none()
+            }
+            Message::SettingsPortChanged(s) => {
+                if let Ok(port) = s.parse::<u16>() {
+                    self.edit_config.server.port = port;
+                }
+                self.settings_dirty = self.edit_config != self.app_config;
+                Task::none()
+            }
+            Message::SettingsScriptPathChanged(s) => {
+                self.edit_config.server.script_path = s;
+                self.settings_dirty = self.edit_config != self.app_config;
+                Task::none()
+            }
+            Message::SettingsDarkModeToggled(enabled) => {
+                self.edit_config.ui.dark_mode = enabled;
+                // Apply dark mode immediately
+                self.app_config.ui.dark_mode = enabled;
+                self.settings_dirty = self.edit_config != self.app_config;
+                let _ = crate::config::save(&self.app_config);
+                Task::none()
+            }
+            Message::SettingsSave => {
+                self.app_config = self.edit_config.clone();
+                self.settings_dirty = false;
+                let _ = crate::config::save(&self.app_config);
+                // Kill existing server and restart
+                if let Some(server) = &mut self.server {
+                    server.kill();
+                }
+                self.server = None;
+                self.screen = Screen::Loading;
+                self.elapsed_secs = 0;
+                self.error = None;
+                "Restarting server...".clone_into(&mut self.loading_status);
+                Task::done(Message::ServerSpawned)
+            }
+            _ => Task::none(),
+        }
+    }
+
     // ─── Private helpers ────────────────────────────────────────
 
     fn ensure_recorder(&mut self) {
@@ -1005,8 +1085,9 @@ impl Qvox {
         ))
         .size(14);
 
-        let models_text = text(format!("Models: {}", self.config.models.join(", "))).size(12);
-        let device_text = text(format!("Device: {}", self.config.device)).size(12);
+        let models_text =
+            text(format!("Models: {}", self.app_config.server.models.join(", "))).size(12);
+        let device_text = text(format!("Device: {}", self.app_config.server.device)).size(12);
 
         let mut col = column![title, progress_bar(0.0..=100.0, 0.0), status, elapsed,]
             .spacing(12)
@@ -1024,6 +1105,8 @@ impl Qvox {
     }
 
     fn view_main(&self) -> Element<'_, Message> {
+        let tab_bar = self.view_tab_bar();
+
         let tab_content = match self.active_tab {
             TabId::Clone => crate::views::clone_tab::view(
                 &self.clone_tab,
@@ -1060,16 +1143,61 @@ impl Qvox {
                 self.active_task.as_ref(),
                 self.playback_state(),
             ),
+            TabId::Settings => crate::views::settings::view(
+                &self.edit_config,
+                self.settings_dirty,
+            ),
         };
 
         let generated = crate::views::generated_list::view(&self.generated_list);
 
-        scrollable(
-            column![tab_content, generated]
-                .spacing(16)
-                .width(Length::Fill),
-        )
-        .into()
+        let mut main_col = column![tab_bar].spacing(0).width(Length::Fill);
+
+        // Error banner
+        if let Some(err) = &self.error {
+            main_col = main_col.push(
+                row![
+                    text(err).size(13),
+                    button(text("Dismiss")).on_press(Message::ErrorDismiss),
+                ]
+                .spacing(8)
+                .padding(8),
+            );
+        }
+
+        main_col = main_col.push(
+            scrollable(
+                column![tab_content, generated]
+                    .spacing(16)
+                    .width(Length::Fill),
+            )
+            .height(Length::Fill),
+        );
+
+        main_col.into()
+    }
+
+    fn view_tab_bar(&self) -> Element<'_, Message> {
+        let tabs = [
+            ("Clone", TabId::Clone),
+            ("Upload", TabId::Upload),
+            ("Multi-Speaker", TabId::MultiSpeaker),
+            ("Voice Design", TabId::VoiceDesign),
+            ("Custom Voice", TabId::CustomVoice),
+            ("Settings", TabId::Settings),
+        ];
+
+        let mut tab_row = row![].spacing(0);
+        for (label, id) in tabs {
+            let btn = if self.active_tab == id {
+                button(text(label).size(13))
+            } else {
+                button(text(label).size(13)).on_press(Message::TabSelected(id))
+            };
+            tab_row = tab_row.push(btn);
+        }
+
+        tab_row.padding(4).into()
     }
     // LCOV_EXCL_STOP
 }
