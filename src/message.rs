@@ -50,6 +50,18 @@ pub enum Message {
     /// Generate button pressed on design tab.
     DesignGenerate,
 
+    // ─── Custom Voice tab inputs ────────────────────────────────
+    /// Text input changed on custom voice tab.
+    CustomTextChanged(String),
+    /// Speaker selected from dropdown.
+    CustomSpeakerSelected(String),
+    /// Language selected on custom voice tab.
+    CustomLanguageSelected(String),
+    /// Style instruct changed on custom voice tab.
+    CustomInstructChanged(String),
+    /// Generate button pressed on custom voice tab.
+    CustomGenerate,
+
     // ─── Task lifecycle ─────────────────────────────────────────
     /// Generation task created, received `task_id`.
     TaskCreated(Result<String, String>),

@@ -4,12 +4,15 @@ use iced::widget::{center, column, container, progress_bar, text};
 use iced::{Element, Length, Subscription, Task};
 
 use crate::api::client::ApiClient;
-use crate::api::types::{CloneRequest, ReferenceAudio, TaskStatus, VoiceDesignRequest};
+use crate::api::types::{
+    CloneRequest, CustomVoiceRequest, ReferenceAudio, TaskStatus, VoiceDesignRequest,
+};
 use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::audio::recorder::{Recorder, RecordingState};
 use crate::message::{ActiveTask, Message, TabId};
 use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
+use crate::views::custom_tab::CustomTabState;
 use crate::views::design_tab::DesignTabState;
 use crate::views::upload_tab::UploadTabState;
 
@@ -49,6 +52,10 @@ pub struct Qvox {
     // ─── Design tab ──────────────────────────────────────
     design_tab: DesignTabState,
 
+    // ─── Custom Voice tab ────────────────────────────────
+    custom_tab: CustomTabState,
+    speakers: Vec<String>,
+
     // ─── Audio playback / recording ─────────────────────
     player: Option<AudioPlayer>,
     recorder: Option<Recorder>,
@@ -71,6 +78,8 @@ impl Default for Qvox {
             active_task: None,
             upload_tab: UploadTabState::new(),
             design_tab: DesignTabState::new(),
+            custom_tab: CustomTabState::new(),
+            speakers: Vec::new(),
             player: None,
             recorder: None,
         }
@@ -119,6 +128,13 @@ impl Qvox {
             | Message::DesignInstructChanged(_)
             | Message::DesignLanguageSelected(_)
             | Message::DesignGenerate => self.update_design(message),
+
+            // ─── Custom Voice tab inputs ─────────────────────
+            Message::CustomTextChanged(_)
+            | Message::CustomSpeakerSelected(_)
+            | Message::CustomLanguageSelected(_)
+            | Message::CustomInstructChanged(_)
+            | Message::CustomGenerate => self.update_custom(message),
 
             // ─── Task lifecycle ─────────────────────────────
             Message::TaskCreated(_)
@@ -232,6 +248,7 @@ impl Qvox {
         match message {
             Message::CapabilitiesLoaded(Ok(caps)) => {
                 self.available_models = caps.models;
+                self.speakers = caps.speakers;
             }
             Message::ReferencesLoaded(Ok(refs)) => {
                 self.references = refs;
@@ -278,6 +295,29 @@ impl Qvox {
                 Task::none()
             }
             Message::DesignGenerate => self.start_design_generation(),
+            _ => Task::none(),
+        }
+    }
+
+    fn update_custom(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::CustomTextChanged(t) => {
+                self.custom_tab.text = t;
+                Task::none()
+            }
+            Message::CustomSpeakerSelected(s) => {
+                self.custom_tab.selected_speaker = Some(s);
+                Task::none()
+            }
+            Message::CustomLanguageSelected(lang) => {
+                self.custom_tab.selected_language = lang;
+                Task::none()
+            }
+            Message::CustomInstructChanged(t) => {
+                self.custom_tab.instruct = t;
+                Task::none()
+            }
+            Message::CustomGenerate => self.start_custom_generation(),
             _ => Task::none(),
         }
     }
@@ -673,6 +713,38 @@ impl Qvox {
         )
     }
 
+    fn start_custom_generation(&mut self) -> Task<Message> {
+        let Some(speaker) = self.custom_tab.selected_speaker.clone() else {
+            return Task::none();
+        };
+
+        let instruct = if self.custom_tab.instruct.is_empty() {
+            None
+        } else {
+            Some(self.custom_tab.instruct.clone())
+        };
+
+        let request = CustomVoiceRequest {
+            text: self.custom_tab.text.clone(),
+            speaker,
+            language: self.custom_tab.selected_language.clone(),
+            instruct,
+        };
+
+        let base_url = self.api_base_url();
+
+        Task::perform(
+            async move {
+                ApiClient::new(&base_url)
+                    .custom_voice(&request)
+                    .await
+                    .map(|resp| resp.task_id)
+                    .map_err(|e| e.to_string())
+            },
+            Message::TaskCreated,
+        )
+    }
+
     #[allow(clippy::unused_self)]
     fn start_transcription(&self, wav_bytes: Vec<u8>, hash: String) -> Task<Message> {
         Task::perform(
@@ -792,7 +864,14 @@ impl Qvox {
                 self.active_task.as_ref(),
                 self.playback_state(),
             ),
-            _ => center(text("Coming soon...").size(16)).into(),
+            TabId::CustomVoice => crate::views::custom_tab::view(
+                &self.custom_tab,
+                &self.speakers,
+                &self.languages,
+                self.active_task.as_ref(),
+                self.playback_state(),
+            ),
+            TabId::MultiSpeaker => center(text("Coming soon...").size(16)).into(),
         }
     }
     // LCOV_EXCL_STOP
