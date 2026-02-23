@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use iced::widget::{center, column, container, progress_bar, text};
+use iced::widget::{center, column, container, progress_bar, scrollable, text};
 use iced::{Element, Length, Subscription, Task};
 
 use crate::api::client::ApiClient;
 use crate::api::types::{
-    CloneRequest, CustomVoiceRequest, MultiSpeakerRequest, MultiSpeakerSegment, ReferenceAudio,
-    TaskStatus, VoiceDesignRequest,
+    CloneRequest, CustomVoiceRequest, GeneratedAudio, MultiSpeakerRequest, MultiSpeakerSegment,
+    ReferenceAudio, TaskStatus, VoiceDesignRequest,
 };
 use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::audio::recorder::{Recorder, RecordingState};
@@ -61,6 +61,9 @@ pub struct Qvox {
     // ─── Multi-Speaker tab ───────────────────────────────
     multi_tab: MultiSpeakerTabState,
 
+    // ─── Generated list ──────────────────────────────────
+    generated_list: Vec<GeneratedAudio>,
+
     // ─── Audio playback / recording ─────────────────────
     player: Option<AudioPlayer>,
     recorder: Option<Recorder>,
@@ -86,6 +89,7 @@ impl Default for Qvox {
             custom_tab: CustomTabState::new(),
             speakers: Vec::new(),
             multi_tab: MultiSpeakerTabState::new(),
+            generated_list: Vec::new(),
             player: None,
             recorder: None,
         }
@@ -178,7 +182,12 @@ impl Qvox {
             | Message::PlaybackStop => self.update_playback(message),
 
             // ─── Generated list ─────────────────────────────
-            Message::GeneratedListLoaded(_) => Task::none(),
+            Message::GeneratedListLoaded(_)
+            | Message::RefreshGeneratedList
+            | Message::GeneratedPlay(_)
+            | Message::GeneratedAudioFetched(_)
+            | Message::GeneratedDelete(_)
+            | Message::GeneratedDeleted(_) => self.update_generated(message),
         }
     }
 
@@ -512,12 +521,16 @@ impl Qvox {
             },
             Message::TaskAudioLoaded(result) => {
                 if let Some(task) = &mut self.active_task {
-                    match result {
-                        Ok(data) => task.audio_data = Some(data),
-                        Err(e) => task.error = Some(e),
+                    match &result {
+                        Ok(data) => task.audio_data = Some(data.clone()),
+                        Err(e) => task.error = Some(e.clone()),
                     }
                 }
-                Task::none()
+                if result.is_ok() {
+                    self.fetch_generated_list()
+                } else {
+                    Task::none()
+                }
             }
             _ => Task::none(),
         }
@@ -571,6 +584,63 @@ impl Qvox {
                 if let Some(player) = &mut self.player {
                     player.stop();
                 }
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+
+    fn update_generated(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::GeneratedListLoaded(Ok(list)) => {
+                self.generated_list = list;
+                Task::none()
+            }
+            Message::GeneratedListLoaded(Err(e)) => {
+                self.error = Some(format!("Failed to load generated list: {e}"));
+                Task::none()
+            }
+            Message::RefreshGeneratedList => self.fetch_generated_list(),
+            Message::GeneratedPlay(audio_id) => {
+                let base_url = self.api_base_url();
+                Task::perform(
+                    async move {
+                        ApiClient::new(&base_url)
+                            .task_audio(&audio_id)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::GeneratedAudioFetched,
+                )
+            }
+            Message::GeneratedAudioFetched(Ok(data)) => {
+                self.play_audio(data);
+                Task::none()
+            }
+            Message::GeneratedAudioFetched(Err(e)) => {
+                self.error = Some(format!("Failed to fetch audio: {e}"));
+                Task::none()
+            }
+            Message::GeneratedDelete(audio_id) => {
+                let base_url = self.api_base_url();
+                let id = audio_id.clone();
+                Task::perform(
+                    async move {
+                        ApiClient::new(&base_url)
+                            .delete_generated(&id)
+                            .await
+                            .map(|_| audio_id)
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::GeneratedDeleted,
+                )
+            }
+            Message::GeneratedDeleted(Ok(audio_id)) => {
+                self.generated_list.retain(|g| g.id != audio_id);
+                Task::none()
+            }
+            Message::GeneratedDeleted(Err(e)) => {
+                self.error = Some(format!("Failed to delete: {e}"));
                 Task::none()
             }
             _ => Task::none(),
@@ -645,6 +715,7 @@ impl Qvox {
         let url = self.api_base_url();
         let url2 = url.clone();
         let url3 = url.clone();
+        let url4 = url.clone();
 
         Task::batch([
             Task::perform(
@@ -673,6 +744,15 @@ impl Qvox {
                         .map_err(|e| e.to_string())
                 },
                 Message::LanguagesLoaded,
+            ),
+            Task::perform(
+                async move {
+                    ApiClient::new(&url4)
+                        .generated_list()
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::GeneratedListLoaded,
             ),
         ])
     }
@@ -900,6 +980,19 @@ impl Qvox {
         )
     }
 
+    fn fetch_generated_list(&self) -> Task<Message> {
+        let base_url = self.api_base_url();
+        Task::perform(
+            async move {
+                ApiClient::new(&base_url)
+                    .generated_list()
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+            Message::GeneratedListLoaded,
+        )
+    }
+
     // LCOV_EXCL_START
     fn view_loading(&self) -> Element<'_, Message> {
         let title = text("qvox").size(32);
@@ -931,7 +1024,7 @@ impl Qvox {
     }
 
     fn view_main(&self) -> Element<'_, Message> {
-        match self.active_tab {
+        let tab_content = match self.active_tab {
             TabId::Clone => crate::views::clone_tab::view(
                 &self.clone_tab,
                 &self.references,
@@ -967,7 +1060,16 @@ impl Qvox {
                 self.active_task.as_ref(),
                 self.playback_state(),
             ),
-        }
+        };
+
+        let generated = crate::views::generated_list::view(&self.generated_list);
+
+        scrollable(
+            column![tab_content, generated]
+                .spacing(16)
+                .width(Length::Fill),
+        )
+        .into()
     }
     // LCOV_EXCL_STOP
 }

@@ -131,6 +131,16 @@ pub enum Message {
     // ─── Generated list ─────────────────────────────────────────
     /// Generated audio list fetched.
     GeneratedListLoaded(Result<Vec<GeneratedAudio>, String>),
+    /// Refresh the generated audio list.
+    RefreshGeneratedList,
+    /// Play a generated audio item by ID.
+    GeneratedPlay(String),
+    /// Audio bytes fetched for a generated item.
+    GeneratedAudioFetched(Result<Vec<u8>, String>),
+    /// Delete a generated audio item by ID.
+    GeneratedDelete(String),
+    /// Deletion result.
+    GeneratedDeleted(Result<String, String>),
 }
 
 /// Tab identifiers.
