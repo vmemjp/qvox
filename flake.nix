@@ -57,8 +57,9 @@
           # CUDA (whisper-rs GPU)
           cudaPackages.cudatoolkit
 
-          # Whisper.cpp build
+          # Whisper.cpp build + C++ runtime
           gcc
+          stdenv.cc.cc.lib
         ];
 
         # LD_LIBRARY_PATH for runtime linking
@@ -102,6 +103,7 @@
             # Python (backend server)
             python3
             python3Packages.pip
+            uv
 
             # Dev tools
             rust-analyzer

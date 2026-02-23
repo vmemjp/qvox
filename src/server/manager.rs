@@ -12,6 +12,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub python_path: Option<String>,
     pub script_path: String,
+    pub model_size: String,
 }
 
 impl Default for ServerConfig {
@@ -22,6 +23,7 @@ impl Default for ServerConfig {
             port: 8000,
             python_path: None,
             script_path: "python/start_server.py".to_owned(),
+            model_size: "1.7B".to_owned(),
         }
     }
 }
@@ -46,27 +48,27 @@ impl ServerManager {
     ///
     /// Tries ports from `config.port` to `config.port + 99` until one succeeds.
     pub fn spawn(config: &ServerConfig) -> Result<Self> {
-        let python = match &config.python_path {
-            Some(p) => p.clone(),
-            None => find_python()?,
-        };
-
         let port = config.port;
 
-        let mut cmd = Command::new(&python);
-        cmd.arg(&config.script_path)
+        let mut cmd = Command::new("uv");
+        cmd.arg("run")
+            .arg("--project")
+            .arg("python")
+            .arg(&config.script_path)
             .arg("--port")
             .arg(port.to_string())
             .arg("--models")
             .args(&config.models)
             .arg("--device")
             .arg(&config.device)
+            .arg("--model-size")
+            .arg(&config.model_size)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         let child = cmd
             .spawn()
-            .with_context(|| format!("failed to spawn Python server: {python}"))?;
+            .with_context(|| "failed to spawn Python server via uv".to_owned())?;
 
         Ok(Self {
             child: Some(child),
@@ -143,6 +145,7 @@ mod tests {
         assert_eq!(config.models, vec!["base"]);
         assert_eq!(config.device, "auto");
         assert!(config.python_path.is_none());
+        assert_eq!(config.model_size, "1.7B");
     }
 
     #[test]

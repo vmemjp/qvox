@@ -19,6 +19,13 @@ Thumbs.db
 *.swo
 *~
 
+# Python
+__pycache__/
+*.pyc
+.hypothesis/
+python/.venv/
+python/.pytest_cache/
+
 # Environment
 .env
 .direnv/

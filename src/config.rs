@@ -24,6 +24,8 @@ pub struct ServerSection {
     pub python: Option<String>,
     #[serde(default = "default_script_path")]
     pub script_path: String,
+    #[serde(default = "default_model_size")]
+    pub model_size: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -40,6 +42,7 @@ impl Default for ServerSection {
             port: default_port(),
             python: None,
             script_path: default_script_path(),
+            model_size: default_model_size(),
         }
     }
 }
@@ -58,6 +61,10 @@ fn default_port() -> u16 {
 
 fn default_script_path() -> String {
     "python/start_server.py".to_owned()
+}
+
+fn default_model_size() -> String {
+    "1.7B".to_owned()
 }
 
 /// Return the path to `config.toml` in the data directory.
@@ -99,6 +106,7 @@ impl AppConfig {
             port: self.server.port,
             python_path: self.server.python.clone(),
             script_path: self.server.script_path.clone(),
+            model_size: self.server.model_size.clone(),
         }
     }
 }
