@@ -14,6 +14,7 @@ use app::Qvox;
 fn main() -> anyhow::Result<()> {
     iced::application(Qvox::new, Qvox::update, Qvox::view)
         .title(Qvox::title)
+        .subscription(Qvox::subscription)
         .run()?;
     Ok(())
 }
