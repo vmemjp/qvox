@@ -50,6 +50,20 @@ pub enum Message {
     /// Audio data fetched for completed task.
     TaskAudioLoaded(Result<Vec<u8>, String>),
 
+    // ─── Playback ───────────────────────────────────────────────
+    /// Play generated audio (from active task).
+    PlayGenerated,
+    /// Play reference audio preview.
+    PlayReference(String),
+    /// Reference audio bytes fetched for preview.
+    ReferenceAudioFetched(Result<Vec<u8>, String>),
+    /// Pause playback.
+    PlaybackPause,
+    /// Resume playback.
+    PlaybackResume,
+    /// Stop playback.
+    PlaybackStop,
+
     // ─── Generated list ─────────────────────────────────────────
     /// Generated audio list fetched.
     GeneratedListLoaded(Result<Vec<GeneratedAudio>, String>),

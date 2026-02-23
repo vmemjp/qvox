@@ -1,7 +1,8 @@
 use iced::widget::{button, column, pick_list, progress_bar, row, text, text_input};
 use iced::{Element, Length};
 
-use crate::api::types::ReferenceAudio;
+use crate::api::types::{ReferenceAudio, TaskStatus};
+use crate::audio::player::PlaybackState;
 use crate::message::{ActiveTask, Message};
 
 /// State specific to the Voice Clone tab.
@@ -30,6 +31,7 @@ pub fn view<'a>(
     references: &'a [ReferenceAudio],
     languages: &'a [String],
     active_task: Option<&'a ActiveTask>,
+    playback: PlaybackState,
 ) -> Element<'a, Message> {
     let ref_names: Vec<String> = references
         .iter()
@@ -46,6 +48,23 @@ pub fn view<'a>(
         Message::CloneRefSelected,
     )
     .placeholder("Select reference audio...");
+
+    // Preview button for the selected reference audio
+    let mut ref_row = row![ref_picker].spacing(8);
+    if let Some(ref_name) = &state.selected_ref {
+        // Find the reference audio ID for the selected name
+        let ref_audio = references
+            .iter()
+            .find(|r| r.name.as_deref().unwrap_or(&r.original_name) == ref_name.as_str());
+        if let Some(audio) = ref_audio {
+            let mut preview_btn = button(text("Preview"));
+            if playback == PlaybackState::Stopped {
+                preview_btn =
+                    preview_btn.on_press(Message::PlayReference(audio.id.clone()));
+            }
+            ref_row = ref_row.push(preview_btn);
+        }
+    }
 
     let lang_picker = pick_list(
         languages.to_vec(),
@@ -69,7 +88,7 @@ pub fn view<'a>(
     let mut content = column![
         text("Voice Clone").size(24),
         text("Reference Audio").size(14),
-        ref_picker,
+        ref_row,
         text("Language").size(14),
         lang_picker,
         text("Text").size(14),
@@ -80,6 +99,7 @@ pub fn view<'a>(
     .padding(20)
     .width(Length::Fill);
 
+    // Progress section
     if let Some(task) = active_task {
         #[allow(clippy::cast_precision_loss)]
         let progress_value = task.progress as f32;
@@ -98,9 +118,40 @@ pub fn view<'a>(
         if let Some(err) = &task.error {
             content = content.push(text(err).size(14));
         }
+
+        // Playback controls for completed task with audio data
+        if task.status == TaskStatus::Completed && task.audio_data.is_some() {
+            content = content.push(playback_controls(playback));
+        }
+    }
+
+    // Stop button visible when audio is playing (reference preview or generated)
+    if playback != PlaybackState::Stopped {
+        content = content.push(playback_controls(playback));
     }
 
     content.into()
+}
+
+/// Render play/pause/stop buttons based on current playback state.
+fn playback_controls(playback: PlaybackState) -> Element<'static, Message> {
+    let mut controls = row![].spacing(8);
+
+    match playback {
+        PlaybackState::Stopped => {
+            controls = controls.push(button(text("Play")).on_press(Message::PlayGenerated));
+        }
+        PlaybackState::Playing => {
+            controls = controls.push(button(text("Pause")).on_press(Message::PlaybackPause));
+            controls = controls.push(button(text("Stop")).on_press(Message::PlaybackStop));
+        }
+        PlaybackState::Paused => {
+            controls = controls.push(button(text("Resume")).on_press(Message::PlaybackResume));
+            controls = controls.push(button(text("Stop")).on_press(Message::PlaybackStop));
+        }
+    }
+
+    controls.into()
 }
 
 // LCOV_EXCL_STOP

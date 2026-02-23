@@ -5,6 +5,7 @@ use iced::{Element, Length, Subscription, Task};
 
 use crate::api::client::ApiClient;
 use crate::api::types::{CloneRequest, ReferenceAudio, TaskStatus};
+use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::message::{ActiveTask, Message, TabId};
 use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
@@ -38,6 +39,9 @@ pub struct Qvox {
     // ─── Clone tab ──────────────────────────────────────────
     clone_tab: CloneTabState,
     active_task: Option<ActiveTask>,
+
+    // ─── Audio playback ───────────────────────────────────
+    player: Option<AudioPlayer>,
 }
 
 impl Default for Qvox {
@@ -55,6 +59,7 @@ impl Default for Qvox {
             available_models: Vec::new(),
             clone_tab: CloneTabState::new(),
             active_task: None,
+            player: None,
         }
     }
 }
@@ -101,6 +106,14 @@ impl Qvox {
             | Message::TaskPollTick
             | Message::TaskProgress(_)
             | Message::TaskAudioLoaded(_) => self.update_task(message),
+
+            // ─── Playback ─────────────────────────────────
+            Message::PlayGenerated
+            | Message::PlayReference(_)
+            | Message::ReferenceAudioFetched(_)
+            | Message::PlaybackPause
+            | Message::PlaybackResume
+            | Message::PlaybackStop => self.update_playback(message),
 
             // ─── Generated list ─────────────────────────────
             Message::GeneratedListLoaded(_) => Task::none(),
@@ -261,7 +274,88 @@ impl Qvox {
         }
     }
 
+    fn update_playback(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::PlayGenerated => {
+                if let Some(data) = self
+                    .active_task
+                    .as_ref()
+                    .and_then(|t| t.audio_data.clone())
+                {
+                    self.play_audio(data);
+                }
+                Task::none()
+            }
+            Message::PlayReference(ref_id) => {
+                let base_url = self.api_base_url();
+                Task::perform(
+                    async move {
+                        ApiClient::new(&base_url)
+                            .reference_audio(&ref_id)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::ReferenceAudioFetched,
+                )
+            }
+            Message::ReferenceAudioFetched(Ok(data)) => {
+                self.play_audio(data);
+                Task::none()
+            }
+            Message::ReferenceAudioFetched(Err(e)) => {
+                self.error = Some(e);
+                Task::none()
+            }
+            Message::PlaybackPause => {
+                if let Some(player) = &mut self.player {
+                    player.pause();
+                }
+                Task::none()
+            }
+            Message::PlaybackResume => {
+                if let Some(player) = &mut self.player {
+                    player.resume();
+                }
+                Task::none()
+            }
+            Message::PlaybackStop => {
+                if let Some(player) = &mut self.player {
+                    player.stop();
+                }
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+
     // ─── Private helpers ────────────────────────────────────────
+
+    fn ensure_player(&mut self) -> Option<&mut AudioPlayer> {
+        if self.player.is_none() {
+            match AudioPlayer::new() {
+                Ok(p) => self.player = Some(p),
+                Err(e) => {
+                    self.error = Some(format!("Audio device error: {e}"));
+                    return None;
+                }
+            }
+        }
+        self.player.as_mut()
+    }
+
+    fn play_audio(&mut self, data: Vec<u8>) {
+        if let Some(player) = self.ensure_player()
+            && let Err(e) = player.play_bytes(data)
+        {
+            self.error = Some(format!("Playback error: {e}"));
+        }
+    }
+
+    fn playback_state(&self) -> PlaybackState {
+        self.player
+            .as_ref()
+            .map_or(PlaybackState::Stopped, AudioPlayer::state)
+    }
 
     fn api_base_url(&self) -> String {
         self.server
@@ -429,6 +523,7 @@ impl Qvox {
                 &self.references,
                 &self.languages,
                 self.active_task.as_ref(),
+                self.playback_state(),
             ),
             _ => center(text("Coming soon...").size(16)).into(),
         }
