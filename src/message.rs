@@ -64,6 +64,18 @@ pub enum Message {
     /// Stop playback.
     PlaybackStop,
 
+    // ─── Upload tab inputs ────────────────────────────────────────
+    /// User clicked "Choose File" — open native file dialog.
+    UploadPickFile,
+    /// File selected from dialog (path, bytes, filename).
+    UploadFileSelected(std::path::PathBuf, Vec<u8>, String),
+    /// Text input changed on upload tab.
+    UploadTextChanged(String),
+    /// Language selected on upload tab.
+    UploadLanguageSelected(String),
+    /// Generate button pressed on upload tab.
+    UploadGenerate,
+
     // ─── Generated list ─────────────────────────────────────────
     /// Generated audio list fetched.
     GeneratedListLoaded(Result<Vec<GeneratedAudio>, String>),

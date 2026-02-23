@@ -134,7 +134,7 @@ pub fn view<'a>(
 }
 
 /// Render play/pause/stop buttons based on current playback state.
-fn playback_controls(playback: PlaybackState) -> Element<'static, Message> {
+pub fn playback_controls(playback: PlaybackState) -> Element<'static, Message> {
     let mut controls = row![].spacing(8);
 
     match playback {

@@ -9,6 +9,7 @@ use crate::audio::player::{AudioPlayer, PlaybackState};
 use crate::message::{ActiveTask, Message, TabId};
 use crate::server::manager::{ServerConfig, ServerManager};
 use crate::views::clone_tab::CloneTabState;
+use crate::views::upload_tab::UploadTabState;
 
 // ─── Screen state ───────────────────────────────────────────────
 
@@ -40,6 +41,9 @@ pub struct Qvox {
     clone_tab: CloneTabState,
     active_task: Option<ActiveTask>,
 
+    // ─── Upload tab ───────────────────────────────────────
+    upload_tab: UploadTabState,
+
     // ─── Audio playback ───────────────────────────────────
     player: Option<AudioPlayer>,
 }
@@ -59,6 +63,7 @@ impl Default for Qvox {
             available_models: Vec::new(),
             clone_tab: CloneTabState::new(),
             active_task: None,
+            upload_tab: UploadTabState::new(),
             player: None,
         }
     }
@@ -106,6 +111,13 @@ impl Qvox {
             | Message::TaskPollTick
             | Message::TaskProgress(_)
             | Message::TaskAudioLoaded(_) => self.update_task(message),
+
+            // ─── Upload tab inputs ─────────────────────────
+            Message::UploadPickFile
+            | Message::UploadFileSelected(_, _, _)
+            | Message::UploadTextChanged(_)
+            | Message::UploadLanguageSelected(_)
+            | Message::UploadGenerate => self.update_upload(message),
 
             // ─── Playback ─────────────────────────────────
             Message::PlayGenerated
@@ -225,6 +237,52 @@ impl Qvox {
                 Task::none()
             }
             Message::CloneGenerate => self.start_clone_generation(),
+            _ => Task::none(),
+        }
+    }
+
+    fn update_upload(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::UploadPickFile => Task::perform(
+                async {
+                    let handle = rfd::AsyncFileDialog::new()
+                        .add_filter("Audio", &["wav", "mp3", "flac", "ogg", "m4a"])
+                        .set_title("Select audio file")
+                        .pick_file()
+                        .await;
+
+                    match handle {
+                        Some(file) => {
+                            let name = file.file_name();
+                            let path = file.path().to_path_buf();
+                            let bytes = file.read().await;
+                            Ok((path, bytes, name))
+                        }
+                        None => Err("No file selected".to_owned()),
+                    }
+                },
+                |result: Result<(std::path::PathBuf, Vec<u8>, String), String>| match result {
+                    Ok((path, bytes, name)) => Message::UploadFileSelected(path, bytes, name),
+                    Err(_) => Message::UploadPickFile, // silently ignore cancel
+                },
+            ),
+            Message::UploadFileSelected(path, bytes, name) => {
+                let hash = crate::audio::hash::bytes_sha256(&bytes);
+                self.upload_tab.selected_file = Some(path);
+                self.upload_tab.file_bytes = Some(bytes);
+                self.upload_tab.file_name = Some(name);
+                self.upload_tab.file_hash = Some(hash);
+                Task::none()
+            }
+            Message::UploadTextChanged(t) => {
+                self.upload_tab.text = t;
+                Task::none()
+            }
+            Message::UploadLanguageSelected(lang) => {
+                self.upload_tab.selected_language = lang;
+                Task::none()
+            }
+            Message::UploadGenerate => self.start_upload_generation(),
             _ => Task::none(),
         }
     }
@@ -448,6 +506,30 @@ impl Qvox {
         )
     }
 
+    fn start_upload_generation(&mut self) -> Task<Message> {
+        let Some(file_bytes) = self.upload_tab.file_bytes.clone() else {
+            return Task::none();
+        };
+        let Some(file_name) = self.upload_tab.file_name.clone() else {
+            return Task::none();
+        };
+
+        let text = self.upload_tab.text.clone();
+        let language = self.upload_tab.selected_language.clone();
+        let base_url = self.api_base_url();
+
+        Task::perform(
+            async move {
+                ApiClient::new(&base_url)
+                    .clone_with_upload(file_bytes, file_name, &text, None, Some(&language))
+                    .await
+                    .map(|resp| resp.task_id)
+                    .map_err(|e| e.to_string())
+            },
+            Message::TaskCreated,
+        )
+    }
+
     fn poll_task(&self) -> Task<Message> {
         let Some(task) = &self.active_task else {
             return Task::none();
@@ -521,6 +603,12 @@ impl Qvox {
             TabId::Clone => crate::views::clone_tab::view(
                 &self.clone_tab,
                 &self.references,
+                &self.languages,
+                self.active_task.as_ref(),
+                self.playback_state(),
+            ),
+            TabId::Upload => crate::views::upload_tab::view(
+                &self.upload_tab,
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
