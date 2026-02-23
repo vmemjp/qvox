@@ -1,6 +1,12 @@
+use crate::api::types::{
+    CapabilitiesResponse, GeneratedAudio, LanguagesResponse, ReferenceAudio, TaskStatus,
+    TaskStatusResponse,
+};
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Message {
+    // ─── Server lifecycle ───────────────────────────────────────
     /// Server process has been spawned; begin health polling.
     ServerSpawned,
     /// Result of a health check poll.
@@ -11,4 +17,222 @@ pub enum Message {
     ServerError(String),
     /// Elapsed-time tick while loading (every 1 second).
     Tick,
+
+    // ─── Data loading ───────────────────────────────────────────
+    /// Capabilities fetched from server.
+    CapabilitiesLoaded(Result<CapabilitiesResponse, String>),
+    /// Reference audio list fetched.
+    ReferencesLoaded(Result<Vec<ReferenceAudio>, String>),
+    /// Languages list fetched.
+    LanguagesLoaded(Result<LanguagesResponse, String>),
+
+    // ─── Tab navigation ─────────────────────────────────────────
+    /// User switched tabs.
+    TabSelected(TabId),
+
+    // ─── Clone tab inputs ───────────────────────────────────────
+    /// Text input changed.
+    CloneTextChanged(String),
+    /// Reference audio selected from dropdown.
+    CloneRefSelected(String),
+    /// Language selected.
+    CloneLanguageSelected(String),
+    /// Generate button pressed.
+    CloneGenerate,
+
+    // ─── Task lifecycle ─────────────────────────────────────────
+    /// Generation task created, received `task_id`.
+    TaskCreated(Result<String, String>),
+    /// Task status poll result.
+    TaskProgress(Result<TaskStatusResponse, String>),
+    /// Task polling tick (every 1 second during generation).
+    TaskPollTick,
+    /// Audio data fetched for completed task.
+    TaskAudioLoaded(Result<Vec<u8>, String>),
+
+    // ─── Generated list ─────────────────────────────────────────
+    /// Generated audio list fetched.
+    GeneratedListLoaded(Result<Vec<GeneratedAudio>, String>),
+}
+
+/// Tab identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum TabId {
+    Clone,
+    Upload,
+    MultiSpeaker,
+    VoiceDesign,
+    CustomVoice,
+}
+
+/// State of an active generation task.
+#[derive(Debug, Clone)]
+pub struct ActiveTask {
+    pub task_id: String,
+    pub status: TaskStatus,
+    pub progress: u32,
+    pub elapsed_secs: u64,
+    pub status_text: String,
+    pub error: Option<String>,
+    pub audio_data: Option<Vec<u8>>,
+}
+
+impl ActiveTask {
+    pub fn new(task_id: String) -> Self {
+        Self {
+            task_id,
+            status: TaskStatus::Processing,
+            progress: 0,
+            elapsed_secs: 0,
+            status_text: "Initializing voice cloner...".to_owned(),
+            error: None,
+            audio_data: None,
+        }
+    }
+
+    pub fn update_progress(&mut self, resp: &TaskStatusResponse) {
+        self.status = resp.status;
+        self.progress = resp.progress;
+        self.status_text = progress_text(resp);
+
+        if let Some(err) = &resp.error {
+            self.error = Some(err.clone());
+        }
+    }
+}
+
+/// Map task progress to user-facing status text.
+fn progress_text(resp: &TaskStatusResponse) -> String {
+    match resp.status {
+        TaskStatus::Failed => resp
+            .error
+            .as_deref()
+            .unwrap_or("Generation failed")
+            .to_owned(),
+        TaskStatus::Cancelled => "Generation cancelled".to_owned(),
+        TaskStatus::Completed => "Complete!".to_owned(),
+        TaskStatus::Processing => {
+            if resp.is_multi_speaker == Some(true) {
+                multi_speaker_progress_text(resp)
+            } else {
+                normal_progress_text(resp.progress)
+            }
+        }
+    }
+}
+
+fn normal_progress_text(progress: u32) -> String {
+    match progress {
+        0..25 => "Initializing voice cloner...".to_owned(),
+        25..50 => "Processing reference audio...".to_owned(),
+        50..75 => "Generating cloned voice...".to_owned(),
+        _ => "Finalizing audio...".to_owned(),
+    }
+}
+
+fn multi_speaker_progress_text(resp: &TaskStatusResponse) -> String {
+    let current = resp.current_segment.unwrap_or(0);
+    let total = resp.total_segments.unwrap_or(0);
+
+    match resp.progress {
+        0..5 => "Initializing multi-speaker generation...".to_owned(),
+        5..90 => format!("Generating segment {current} of {total}..."),
+        90..95 => "Concatenating audio segments...".to_owned(),
+        _ => "Finalizing audio...".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_task_new() {
+        let task = ActiveTask::new("task-1".to_owned());
+        assert_eq!(task.task_id, "task-1");
+        assert_eq!(task.status, TaskStatus::Processing);
+        assert_eq!(task.progress, 0);
+        assert!(task.error.is_none());
+        assert!(task.audio_data.is_none());
+    }
+
+    #[test]
+    fn normal_progress_text_ranges() {
+        assert!(normal_progress_text(0).contains("Initializing"));
+        assert!(normal_progress_text(24).contains("Initializing"));
+        assert!(normal_progress_text(25).contains("Processing"));
+        assert!(normal_progress_text(49).contains("Processing"));
+        assert!(normal_progress_text(50).contains("Generating"));
+        assert!(normal_progress_text(74).contains("Generating"));
+        assert!(normal_progress_text(75).contains("Finalizing"));
+        assert!(normal_progress_text(100).contains("Finalizing"));
+    }
+
+    #[test]
+    fn progress_text_completed() {
+        let resp = TaskStatusResponse {
+            status: TaskStatus::Completed,
+            progress: 100,
+            output_path: None,
+            ref_audio_id: None,
+            generation_time_seconds: None,
+            error: None,
+            is_multi_speaker: None,
+            total_segments: None,
+            current_segment: None,
+        };
+        assert_eq!(progress_text(&resp), "Complete!");
+    }
+
+    #[test]
+    fn progress_text_failed() {
+        let resp = TaskStatusResponse {
+            status: TaskStatus::Failed,
+            progress: 50,
+            output_path: None,
+            ref_audio_id: None,
+            generation_time_seconds: None,
+            error: Some("out of memory".to_owned()),
+            is_multi_speaker: None,
+            total_segments: None,
+            current_segment: None,
+        };
+        assert_eq!(progress_text(&resp), "out of memory");
+    }
+
+    #[test]
+    fn progress_text_multi_speaker() {
+        let resp = TaskStatusResponse {
+            status: TaskStatus::Processing,
+            progress: 45,
+            output_path: None,
+            ref_audio_id: None,
+            generation_time_seconds: None,
+            error: None,
+            is_multi_speaker: Some(true),
+            total_segments: Some(3),
+            current_segment: Some(2),
+        };
+        assert_eq!(progress_text(&resp), "Generating segment 2 of 3...");
+    }
+
+    #[test]
+    fn active_task_update_progress() {
+        let mut task = ActiveTask::new("t1".to_owned());
+        let resp = TaskStatusResponse {
+            status: TaskStatus::Processing,
+            progress: 60,
+            output_path: None,
+            ref_audio_id: None,
+            generation_time_seconds: None,
+            error: None,
+            is_multi_speaker: None,
+            total_segments: None,
+            current_segment: None,
+        };
+        task.update_progress(&resp);
+        assert_eq!(task.progress, 60);
+        assert!(task.status_text.contains("Generating"));
+    }
 }
