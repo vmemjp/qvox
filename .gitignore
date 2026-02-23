@@ -1,0 +1,31 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Nix
+/result
+
+# Coverage
+lcov.info
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.direnv/
+
+# Docs (internal design docs, not for public repo)
+/docs/
+
+# Data
+/data/
