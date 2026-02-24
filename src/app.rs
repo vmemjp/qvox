@@ -285,8 +285,20 @@ impl Qvox {
             }
             Message::Tick => {
                 self.elapsed_secs += 1;
-                if self.server.is_some() && self.error.is_none() {
-                    self.poll_health()
+                if let Some(ref mut mgr) = self.server {
+                    if self.error.is_none() {
+                        if mgr.is_running() {
+                            self.poll_health()
+                        } else {
+                            self.error = Some(
+                                "Server process exited unexpectedly. Check the terminal for details.".to_owned(),
+                            );
+                            self.loading_status = "Error: server crashed".to_owned();
+                            Task::none()
+                        }
+                    } else {
+                        Task::none()
+                    }
                 } else {
                     Task::none()
                 }
