@@ -105,9 +105,7 @@ pub fn view<'a>(
         if task.status == TaskStatus::Completed && task.audio_data.is_some() {
             content = content.push(super::clone_tab::playback_controls(playback));
         }
-    }
-
-    if playback != PlaybackState::Stopped {
+    } else if playback != PlaybackState::Stopped {
         content = content.push(super::clone_tab::playback_controls(playback));
     }
 

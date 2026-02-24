@@ -123,10 +123,8 @@ pub fn view<'a>(
         if task.status == TaskStatus::Completed && task.audio_data.is_some() {
             content = content.push(playback_controls(playback));
         }
-    }
-
-    // Stop button visible when audio is playing (reference preview or generated)
-    if playback != PlaybackState::Stopped {
+    } else if playback != PlaybackState::Stopped {
+        // Playback controls for reference preview (no active task)
         content = content.push(playback_controls(playback));
     }
 
