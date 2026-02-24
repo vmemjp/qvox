@@ -63,8 +63,8 @@ impl ServerManager {
             .arg(&config.device)
             .arg("--model-size")
             .arg(&config.model_size)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
 
         let child = cmd
             .spawn()
