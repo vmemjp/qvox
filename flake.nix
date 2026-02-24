@@ -63,7 +63,9 @@
         ];
 
         # LD_LIBRARY_PATH for runtime linking
-        libPath = pkgs.lib.makeLibraryPath buildInputs;
+        # Include /run/opengl-driver/lib for NixOS NVIDIA driver (libcuda.so.1)
+        libPath = pkgs.lib.makeLibraryPath buildInputs
+          + ":/run/opengl-driver/lib";
       in
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
