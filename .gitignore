@@ -35,3 +35,6 @@ python/.pytest_cache/
 
 # Data
 /data/
+
+# Reference repos
+/refs/

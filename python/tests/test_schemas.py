@@ -23,7 +23,10 @@ valid_language = st.sampled_from(SUPPORTED_LANGUAGES)
 valid_text = st.text(min_size=1, max_size=100).filter(lambda s: len(s.strip()) > 0)
 valid_instruct = st.text(min_size=1, max_size=100).filter(lambda s: len(s.strip()) > 0)
 valid_ref_id = st.text(min_size=1, max_size=50).filter(lambda s: len(s.strip()) > 0)
-valid_speaker = st.sampled_from(["Chelsie", "Aidan", "Aaliyah", "Ethan"])
+valid_speaker = st.sampled_from([
+    "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
+    "Ryan", "Aiden", "Ono_Anna", "Sohee",
+])
 
 
 # ─── CloneRequest ───────────────────────────────────────────────
@@ -114,23 +117,27 @@ class TestVoiceDesignRequest:
 
 class TestCustomVoiceRequest:
     def test_valid_minimal(self) -> None:
-        req = CustomVoiceRequest(text="Hello", speaker="Chelsie")
+        req = CustomVoiceRequest(text="Hello", speaker="Vivian")
         assert req.language == "auto"
         assert req.instruct is None
 
     def test_valid_with_instruct(self) -> None:
         req = CustomVoiceRequest(
-            text="Hello", speaker="Ethan", instruct="slowly"
+            text="Hello", speaker="Dylan", instruct="slowly"
         )
         assert req.instruct == "slowly"
 
     def test_empty_text_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            CustomVoiceRequest(text="", speaker="Chelsie")
+            CustomVoiceRequest(text="", speaker="Vivian")
 
     def test_empty_speaker_rejected(self) -> None:
         with pytest.raises(ValidationError):
             CustomVoiceRequest(text="Hello", speaker="")
+
+    def test_invalid_speaker_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CustomVoiceRequest(text="Hello", speaker="NonexistentSpeaker")
 
     @given(text=valid_text, speaker=valid_speaker, lang=valid_language)
     @settings(max_examples=50)

@@ -74,7 +74,10 @@ class QwenTTSEngine:
 
     @property
     def speakers(self) -> list[str]:
-        return ["Chelsie", "Aidan", "Aaliyah", "Ethan"]
+        return [
+            "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
+            "Ryan", "Aiden", "Ono_Anna", "Sohee",
+        ]
 
     @property
     def is_ready(self) -> bool:
@@ -107,12 +110,34 @@ class QwenTTSEngine:
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        # Detect flash-attn availability
+        attn_impl: str | None = None
+        try:
+            import importlib.util as _ilu
+
+            if _ilu.find_spec("flash_attn") is not None:
+                attn_impl = "flash_attention_2"
+        except (ImportError, ModuleNotFoundError):
+            pass
+
+        kwargs: dict[str, object] = {
+            "device_map": device,
+            "dtype": torch.bfloat16,
+        }
+        if attn_impl is not None:
+            kwargs["attn_implementation"] = attn_impl
+
         model: object = Qwen3TTSModel.from_pretrained(  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-            hf_name, device=device
+            hf_name, **kwargs
         )
         self._model = model
         self._current_model_type = model_type
         return model  # pyright: ignore[reportUnknownVariableType]
+
+    @staticmethod
+    def _resolve_language(language: str) -> str:
+        """Map 'auto' to 'Auto' for the qwen_tts API."""
+        return "Auto" if language == "auto" else language
 
     def generate_clone(
         self,
@@ -123,13 +148,14 @@ class QwenTTSEngine:
     ) -> tuple[NDArray[np.float32], int]:
         with self._lock:
             model = self._ensure_model("base")
-            wav, sr = model.synthesize(
+            wavs, sr = model.generate_voice_clone(  # pyright: ignore[reportUnknownMemberType]
                 text=text,
                 ref_audio=str(ref_audio_path),
                 ref_text=ref_text or "",
-                lang=language if language != "auto" else None,
+                language=self._resolve_language(language),
             )
-            return np.asarray(wav, dtype=np.float32), int(sr)
+            combined = np.concatenate(wavs).astype(np.float32)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            return combined, int(sr)
 
     def generate_voice_design(
         self,
@@ -139,12 +165,13 @@ class QwenTTSEngine:
     ) -> tuple[NDArray[np.float32], int]:
         with self._lock:
             model = self._ensure_model("voice_design")
-            wav, sr = model.synthesize(
+            wavs, sr = model.generate_voice_design(  # pyright: ignore[reportUnknownMemberType]
                 text=text,
                 instruct=instruct,
-                lang=language if language != "auto" else None,
+                language=self._resolve_language(language),
             )
-            return np.asarray(wav, dtype=np.float32), int(sr)
+            combined = np.concatenate(wavs).astype(np.float32)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            return combined, int(sr)
 
     def generate_custom_voice(
         self,
@@ -158,9 +185,10 @@ class QwenTTSEngine:
             kwargs: dict[str, str | None] = {
                 "text": text,
                 "speaker": speaker,
-                "lang": language if language != "auto" else None,
+                "language": self._resolve_language(language),
             }
             if instruct is not None:
                 kwargs["instruct"] = instruct
-            wav, sr = model.synthesize(**kwargs)
-            return np.asarray(wav, dtype=np.float32), int(sr)
+            wavs, sr = model.generate_custom_voice(**kwargs)  # pyright: ignore[reportUnknownMemberType]
+            combined = np.concatenate(wavs).astype(np.float32)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            return combined, int(sr)

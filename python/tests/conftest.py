@@ -35,7 +35,10 @@ class FakeTTSEngine:
         speakers: list[str] | None = None,
     ) -> None:
         self._models = models or ["base", "voice_design", "custom_voice"]
-        self._speakers = speakers or ["Chelsie", "Aidan", "Aaliyah", "Ethan"]
+        self._speakers = speakers or [
+            "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
+            "Ryan", "Aiden", "Ono_Anna", "Sohee",
+        ]
 
     @property
     def loaded_models(self) -> list[str]:

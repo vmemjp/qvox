@@ -112,7 +112,7 @@ async def test_voice_design_empty_instruct_rejected(client: AsyncClient) -> None
 async def test_custom_voice(client: AsyncClient) -> None:
     resp = await client.post(
         "/custom-voice",
-        json={"text": "Hello world", "speaker": "Chelsie"},
+        json={"text": "Hello world", "speaker": "Vivian"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -126,7 +126,7 @@ async def test_custom_voice_with_instruct(client: AsyncClient) -> None:
         "/custom-voice",
         json={
             "text": "Hello",
-            "speaker": "Ethan",
+            "speaker": "Dylan",
             "instruct": "Speak slowly",
         },
     )

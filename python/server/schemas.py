@@ -14,29 +14,37 @@ SUPPORTED_LANGUAGES: list[str] = [
     "English",
     "Japanese",
     "Korean",
-    "French",
     "German",
+    "French",
+    "Russian",
+    "Portuguese",
     "Spanish",
     "Italian",
-    "Portuguese",
-    "Russian",
-    "Arabic",
-    "Thai",
-    "Indonesian",
-    "Vietnamese",
 ]
 
 SUPPORTED_SPEAKERS: list[str] = [
-    "Chelsie",
-    "Aidan",
-    "Aaliyah",
-    "Ethan",
+    "Vivian",
+    "Serena",
+    "Uncle_Fu",
+    "Dylan",
+    "Eric",
+    "Ryan",
+    "Aiden",
+    "Ono_Anna",
+    "Sohee",
 ]
 
 
 def _validate_language(v: str) -> str:
     if v not in SUPPORTED_LANGUAGES:
         msg = f"Unsupported language: {v}. Must be one of: {SUPPORTED_LANGUAGES}"
+        raise ValueError(msg)
+    return v
+
+
+def _validate_speaker(v: str) -> str:
+    if v not in SUPPORTED_SPEAKERS:
+        msg = f"Unsupported speaker: {v}. Must be one of: {SUPPORTED_SPEAKERS}"
         raise ValueError(msg)
     return v
 
@@ -156,6 +164,11 @@ class CustomVoiceRequest(BaseModel):
     @classmethod
     def check_language(cls, v: str) -> str:
         return _validate_language(v)
+
+    @field_validator("speaker")
+    @classmethod
+    def check_speaker(cls, v: str) -> str:
+        return _validate_speaker(v)
 
 
 # ─── Voice Generation Response ──────────────────────────────────

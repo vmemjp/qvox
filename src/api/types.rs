@@ -197,7 +197,7 @@ mod tests {
     fn capabilities_response_round_trip() {
         let original = CapabilitiesResponse {
             models: vec!["base".to_owned(), "custom_voice".to_owned()],
-            speakers: vec!["Chelsie".to_owned(), "Ethan".to_owned()],
+            speakers: vec!["Vivian".to_owned(), "Dylan".to_owned()],
         };
         let json = serde_json::to_string(&original).expect("serialize");
         let decoded: CapabilitiesResponse = serde_json::from_str(&json).expect("deserialize");
@@ -330,7 +330,7 @@ mod tests {
     fn custom_voice_request_round_trip() {
         let original = CustomVoiceRequest {
             text: "Hello".to_owned(),
-            speaker: "Chelsie".to_owned(),
+            speaker: "Vivian".to_owned(),
             language: "auto".to_owned(),
             instruct: Some("Speak slowly".to_owned()),
         };
@@ -343,7 +343,7 @@ mod tests {
     fn custom_voice_request_omits_none_instruct() {
         let req = CustomVoiceRequest {
             text: "Hello".to_owned(),
-            speaker: "Ethan".to_owned(),
+            speaker: "Dylan".to_owned(),
             language: "auto".to_owned(),
             instruct: None,
         };
