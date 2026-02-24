@@ -104,6 +104,7 @@
             python3
             python3Packages.pip
             uv
+            sox              # qwen-tts audio processing
 
             # Dev tools
             rust-analyzer

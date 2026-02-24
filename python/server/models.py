@@ -122,7 +122,7 @@ class QwenTTSEngine:
 
         kwargs: dict[str, object] = {
             "device_map": device,
-            "dtype": torch.bfloat16,
+            "torch_dtype": torch.bfloat16,
         }
         if attn_impl is not None:
             kwargs["attn_implementation"] = attn_impl
