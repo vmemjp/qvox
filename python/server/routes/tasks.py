@@ -47,11 +47,10 @@ def task_audio(request: Request, task_id: str) -> Response:
     """Download the generated audio for a completed task."""
     task_manager = get_task_manager(request)
     state = task_manager.get(task_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if state.status != "completed":
+    if state is not None and state.status != "completed":
         raise HTTPException(status_code=400, detail="Task not completed")
 
+    # Fall back to storage directly — task state is ephemeral but files persist
     storage = get_storage(request)
     audio_bytes = storage.get_generated_audio(task_id)
     if audio_bytes is None:
