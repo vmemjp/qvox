@@ -21,9 +21,9 @@ Built with [iced](https://github.com/iced-rs/iced), communicates with a Python F
 |---------|--------|
 | Voice clone | Verified |
 | Clone with upload | Verified |
-| Multi-speaker clone | Not yet verified |
-| Voice design | Not yet verified |
-| Custom voice | Not yet verified |
+| Multi-speaker clone | Verified |
+| Voice design | Verified |
+| Custom voice | Verified |
 | GUI polish | In progress |
 
 ## Requirements
