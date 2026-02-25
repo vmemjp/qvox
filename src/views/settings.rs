@@ -8,11 +8,17 @@ use crate::message::Message;
 
 /// Build the settings view.
 pub fn view(config: &AppConfig, dirty: bool) -> Element<'_, Message> {
-    let models_str = config.server.models.join(", ");
-
-    let models_field = text_input("base, voice_design, custom_voice", &models_str)
-        .on_input(Message::SettingsModelsChanged)
-        .width(Length::Fill);
+    let models = &config.server.models;
+    let base_check = checkbox(models.contains(&"base".to_owned()))
+        .label("base")
+        .on_toggle(|_| Message::SettingsModelToggled("base".to_owned()));
+    let design_check = checkbox(models.contains(&"voice_design".to_owned()))
+        .label("voice_design")
+        .on_toggle(|_| Message::SettingsModelToggled("voice_design".to_owned()));
+    let custom_check = checkbox(models.contains(&"custom_voice".to_owned()))
+        .label("custom_voice")
+        .on_toggle(|_| Message::SettingsModelToggled("custom_voice".to_owned()));
+    let models_row = row![base_check, design_check, custom_check].spacing(16);
 
     let device_field = text_input("auto", &config.server.device)
         .on_input(Message::SettingsDeviceChanged)
@@ -37,8 +43,8 @@ pub fn view(config: &AppConfig, dirty: bool) -> Element<'_, Message> {
 
     column![
         text("Settings").size(24),
-        text("Models (comma-separated)").size(14),
-        models_field,
+        text("Models").size(14),
+        models_row,
         row![
             column![text("Device").size(14), device_field].spacing(4),
             column![text("Port").size(14), port_field].spacing(4),

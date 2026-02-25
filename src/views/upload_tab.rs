@@ -71,9 +71,12 @@ pub fn view<'a>(
         .on_input(Message::UploadTextChanged)
         .width(Length::Fill);
 
+    let is_generating = active_task
+        .as_ref()
+        .is_some_and(|t| t.status == TaskStatus::Processing);
     let can_generate = !state.text.is_empty()
         && state.file_bytes.is_some()
-        && active_task.is_none()
+        && !is_generating
         && !state.transcribing
         && recording == RecordingState::Idle;
 

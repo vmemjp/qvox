@@ -77,8 +77,10 @@ pub fn view<'a>(
         .on_input(Message::CloneTextChanged)
         .width(Length::Fill);
 
-    let can_generate =
-        !state.text.is_empty() && state.selected_ref.is_some() && active_task.is_none();
+    let is_generating = active_task
+        .as_ref()
+        .is_some_and(|t| t.status == TaskStatus::Processing);
+    let can_generate = !state.text.is_empty() && state.selected_ref.is_some() && !is_generating;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {

@@ -99,6 +99,8 @@ pub enum Message {
     PlaybackResume,
     /// Stop playback.
     PlaybackStop,
+    /// Playback state poll tick (detects when audio finishes).
+    PlaybackTick,
 
     // ─── Upload tab inputs ────────────────────────────────────────
     /// User clicked "Choose File" — open native file dialog.
@@ -143,8 +145,8 @@ pub enum Message {
     GeneratedDeleted(Result<String, String>),
 
     // ─── Settings ─────────────────────────────────────────────────
-    /// Models field changed.
-    SettingsModelsChanged(String),
+    /// Model checkbox toggled.
+    SettingsModelToggled(String),
     /// Device field changed.
     SettingsDeviceChanged(String),
     /// Port field changed.

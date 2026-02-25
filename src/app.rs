@@ -193,7 +193,8 @@ impl Qvox {
             | Message::ReferenceAudioFetched(_)
             | Message::PlaybackPause
             | Message::PlaybackResume
-            | Message::PlaybackStop => self.update_playback(message),
+            | Message::PlaybackStop
+            | Message::PlaybackTick => self.update_playback(message),
 
             // ─── Generated list ─────────────────────────────
             Message::GeneratedListLoaded(_)
@@ -204,7 +205,7 @@ impl Qvox {
             | Message::GeneratedDeleted(_) => self.update_generated(message),
 
             // ─── Settings ──────────────────────────────────────
-            Message::SettingsModelsChanged(_)
+            Message::SettingsModelToggled(_)
             | Message::SettingsDeviceChanged(_)
             | Message::SettingsPortChanged(_)
             | Message::SettingsScriptPathChanged(_)
@@ -233,16 +234,24 @@ impl Qvox {
             .as_ref()
             .is_some_and(|t| t.status == TaskStatus::Processing);
         let is_recording = self.recording_state() == RecordingState::Recording;
+        let is_playing = self.playback_state() == PlaybackState::Playing;
+
+        let mut subs = Vec::new();
 
         if is_loading {
-            iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
-        } else if is_task_polling {
-            iced::time::every(Duration::from_secs(1)).map(|_| Message::TaskPollTick)
-        } else if is_recording {
-            iced::time::every(Duration::from_millis(200)).map(|_| Message::RecordTick)
-        } else {
-            Subscription::none()
+            subs.push(iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick));
         }
+        if is_task_polling {
+            subs.push(iced::time::every(Duration::from_secs(1)).map(|_| Message::TaskPollTick));
+        }
+        if is_recording {
+            subs.push(iced::time::every(Duration::from_millis(200)).map(|_| Message::RecordTick));
+        }
+        if is_playing {
+            subs.push(iced::time::every(Duration::from_millis(250)).map(|_| Message::PlaybackTick));
+        }
+
+        Subscription::batch(subs)
     }
 
     // ─── Update sub-handlers ────────────────────────────────────
@@ -626,6 +635,10 @@ impl Qvox {
                 }
                 Task::none()
             }
+            Message::PlaybackTick => {
+                // Triggers a view refresh; playback_state() detects when audio finished.
+                Task::none()
+            }
             _ => Task::none(),
         }
     }
@@ -689,9 +702,13 @@ impl Qvox {
 
     fn update_settings(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SettingsModelsChanged(s) => {
-                self.edit_config.server.models =
-                    s.split(',').map(|m| m.trim().to_owned()).filter(|m| !m.is_empty()).collect();
+            Message::SettingsModelToggled(model) => {
+                let models = &mut self.edit_config.server.models;
+                if let Some(pos) = models.iter().position(|m| m == &model) {
+                    models.remove(pos);
+                } else {
+                    models.push(model);
+                }
                 self.settings_dirty = self.edit_config != self.app_config;
                 Task::none()
             }

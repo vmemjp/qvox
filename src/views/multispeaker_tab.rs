@@ -75,10 +75,13 @@ pub fn view<'a>(
     let add_btn = button(text("+ Add Segment")).on_press(Message::MultiAddSegment);
     content = content.push(add_btn);
 
+    let is_generating = active_task
+        .as_ref()
+        .is_some_and(|t| t.status == TaskStatus::Processing);
     let can_generate = state.segments.iter().all(|s| {
         !s.text.is_empty() && s.selected_ref.is_some()
     }) && !state.segments.is_empty()
-        && active_task.is_none();
+        && !is_generating;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {

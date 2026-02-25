@@ -48,7 +48,11 @@ impl Default for ServerSection {
 }
 
 fn default_models() -> Vec<String> {
-    vec!["base".to_owned()]
+    vec![
+        "base".to_owned(),
+        "voice_design".to_owned(),
+        "custom_voice".to_owned(),
+    ]
 }
 
 fn default_device() -> String {
@@ -153,7 +157,7 @@ dark_mode = true
         let config = AppConfig::default();
         let sc = config.to_server_config();
         assert_eq!(sc.port, 8000);
-        assert_eq!(sc.models, vec!["base"]);
+        assert_eq!(sc.models, vec!["base", "voice_design", "custom_voice"]);
         assert_eq!(sc.device, "auto");
     }
 
