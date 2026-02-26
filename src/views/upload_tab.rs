@@ -46,6 +46,7 @@ pub fn view<'a>(
     playback: PlaybackState,
     recording: RecordingState,
     recording_elapsed: f32,
+    model_available: bool,
 ) -> Element<'a, Message> {
     let file_label = state
         .file_name
@@ -78,7 +79,8 @@ pub fn view<'a>(
         && state.file_bytes.is_some()
         && !is_generating
         && !state.transcribing
-        && recording == RecordingState::Idle;
+        && recording == RecordingState::Idle
+        && model_available;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {

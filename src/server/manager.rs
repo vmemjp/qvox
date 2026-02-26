@@ -1,5 +1,8 @@
 use std::process::{Child, Command, Stdio};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use anyhow::{Context, Result, bail};
 
 use crate::api::client::ApiClient;
@@ -66,6 +69,10 @@ impl ServerManager {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
 
+        // Create a new process group so we can kill uv + uvicorn together.
+        #[cfg(unix)]
+        cmd.process_group(0);
+
         let child = cmd
             .spawn()
             .with_context(|| "failed to spawn Python server via uv".to_owned())?;
@@ -103,10 +110,21 @@ impl ServerManager {
         }
     }
 
-    /// Kill the server process.
+    /// Kill the server process and all its children (process group).
     pub fn kill(&mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
+            #[cfg(unix)]
+            {
+                // Send SIGTERM to the entire process group (uv + uvicorn).
+                // SAFETY: kill with a negative PID targets the process group.
+                unsafe {
+                    libc::kill(-(child.id() as libc::pid_t), libc::SIGTERM);
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = child.kill();
+            }
             let _ = child.wait();
         }
     }

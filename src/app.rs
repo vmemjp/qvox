@@ -1136,6 +1136,7 @@ impl Qvox {
     fn view_main(&self) -> Element<'_, Message> {
         let tab_bar = self.view_tab_bar();
 
+        let models = &self.available_models;
         let tab_content = match self.active_tab {
             TabId::Clone => crate::views::clone_tab::view(
                 &self.clone_tab,
@@ -1143,6 +1144,7 @@ impl Qvox {
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
+                models.iter().any(|m| m == "base"),
             ),
             TabId::Upload => crate::views::upload_tab::view(
                 &self.upload_tab,
@@ -1151,12 +1153,14 @@ impl Qvox {
                 self.playback_state(),
                 self.recording_state(),
                 self.recorder.as_ref().map_or(0.0, Recorder::elapsed_secs),
+                models.iter().any(|m| m == "base"),
             ),
             TabId::VoiceDesign => crate::views::design_tab::view(
                 &self.design_tab,
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
+                models.iter().any(|m| m == "voice_design"),
             ),
             TabId::CustomVoice => crate::views::custom_tab::view(
                 &self.custom_tab,
@@ -1164,6 +1168,7 @@ impl Qvox {
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
+                models.iter().any(|m| m == "custom_voice"),
             ),
             TabId::MultiSpeaker => crate::views::multispeaker_tab::view(
                 &self.multi_tab,
@@ -1171,6 +1176,7 @@ impl Qvox {
                 &self.languages,
                 self.active_task.as_ref(),
                 self.playback_state(),
+                models.iter().any(|m| m == "base"),
             ),
             TabId::Settings => crate::views::settings::view(
                 &self.edit_config,

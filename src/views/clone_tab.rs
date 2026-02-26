@@ -32,6 +32,7 @@ pub fn view<'a>(
     languages: &'a [String],
     active_task: Option<&'a ActiveTask>,
     playback: PlaybackState,
+    model_available: bool,
 ) -> Element<'a, Message> {
     let ref_names: Vec<String> = references
         .iter()
@@ -80,7 +81,8 @@ pub fn view<'a>(
     let is_generating = active_task
         .as_ref()
         .is_some_and(|t| t.status == TaskStatus::Processing);
-    let can_generate = !state.text.is_empty() && state.selected_ref.is_some() && !is_generating;
+    let can_generate =
+        !state.text.is_empty() && state.selected_ref.is_some() && !is_generating && model_available;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {

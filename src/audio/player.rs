@@ -32,8 +32,9 @@ impl std::fmt::Debug for AudioPlayer {
 impl AudioPlayer {
     /// Create a new player using the default audio output device.
     pub fn new() -> Result<Self> {
-        let stream =
+        let mut stream =
             rodio::DeviceSinkBuilder::open_default_sink().context("failed to open audio device")?;
+        stream.log_on_drop(false);
         let player = Player::connect_new(stream.mixer());
         Ok(Self {
             _stream: stream,

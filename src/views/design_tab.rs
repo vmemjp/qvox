@@ -31,6 +31,7 @@ pub fn view<'a>(
     languages: &'a [String],
     active_task: Option<&'a ActiveTask>,
     playback: PlaybackState,
+    model_available: bool,
 ) -> Element<'a, Message> {
     let instruct_field =
         text_input("Describe the voice (e.g. \"A warm, friendly female voice\")", &state.instruct)
@@ -51,7 +52,8 @@ pub fn view<'a>(
     let is_generating = active_task
         .as_ref()
         .is_some_and(|t| t.status == TaskStatus::Processing);
-    let can_generate = !state.text.is_empty() && !state.instruct.is_empty() && !is_generating;
+    let can_generate =
+        !state.text.is_empty() && !state.instruct.is_empty() && !is_generating && model_available;
 
     let mut generate_btn = button(text("Generate"));
     if can_generate {
